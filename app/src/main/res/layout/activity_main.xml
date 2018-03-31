@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainLayout"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="org.uncopyrightedapps.android.utils.screenrecorder.MainActivity">
+
+    <TextView
+        android:id="@+id/recording_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:text="@string/title_recording_status"
+        android:textAppearance="?android:attr/textAppearanceLarge"/>
+
+    <ToggleButton
+        android:id="@+id/recording_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/recording_status"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="5dp"/>
+
+    <ToggleButton
+        android:id="@+id/audio_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/recording_toggle"
+        android:layout_centerHorizontal="true"
+        android:textOn="@string/with_audio"
+        android:textOff="@string/no_audio"
+        android:layout_marginTop="5dp"/>
+
+</RelativeLayout>
