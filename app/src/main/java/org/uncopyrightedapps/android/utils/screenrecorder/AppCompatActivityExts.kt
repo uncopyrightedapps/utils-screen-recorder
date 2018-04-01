@@ -10,8 +10,5 @@ fun AppCompatActivity.isPermissionGranted(permission: String) =
 fun AppCompatActivity.shouldShowPermissionRationale(permission: String) =
         ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
 
-fun AppCompatActivity.requestPermission(permission: String, requestId: Int) =
-        ActivityCompat.requestPermissions(this, arrayOf(permission), requestId)
-
 fun AppCompatActivity.batchRequestPermissions(permissions: Array<String>, requestId: Int) =
         ActivityCompat.requestPermissions(this, permissions, requestId)

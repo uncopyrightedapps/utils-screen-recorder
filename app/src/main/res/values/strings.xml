@@ -1,8 +1,11 @@
 <resources>
-    <string name="app_name">Android Screen Recorder</string>
+    <string name="app_name">Screen Recorder</string>
     <string name="title_recording_status">Recording Status</string>
     <string name="permission_rationale">Without recording permissions it is impossible use this application.</string>
     <string name="ok">OK</string>
     <string name="with_audio">With audio</string>
     <string name="no_audio">Without audio</string>
+    <string name="recording_on">Recording On</string>
+    <string name="recording_off">Recording Off</string>
+    <string name="uncopyrightedapps_url">github.com/uncopyrightedapps</string>
 </resources>

@@ -49,18 +49,150 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun initAllRecordingResources() {
-        if (mScreenDensity == 0) {
-            val metrics = DisplayMetrics()
-            windowManager.defaultDisplay.getMetrics(metrics)
-            mScreenDensity = metrics.densityDpi
-
-            initRecorder()
-            prepareRecorder()
-
-            mProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mMediaProjectionCallback = MediaProjectionCallback()
+    private fun showStartStopRecording() {
+        if (recordingOn) {
+            stopRecording()
+        } else {
+            checkPermissionsAndStartRecording()
         }
+    }
+
+
+    /*********************************************************************************************
+     * Start Recording
+     ********************************************************************************************/
+
+    private fun checkPermissionsAndStartRecording() {
+        Log.i(TAG, "Start recording pressed. Checking permissions.")
+        if (permissionsAreMissing()) {
+            toggleButton.isChecked = false
+            requestRequiredPermissions()
+        } else {
+            Log.i(TAG,"Permissions have already been granted. Starting the recording.")
+            startAuthorizedRecording()
+        }
+    }
+
+    private fun permissionsAreMissing() =
+            !isPermissionGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE) ||
+                    !isPermissionGranted(Manifest.permission.RECORD_AUDIO)
+
+    private fun startAuthorizedRecording() {
+        recordingOn = true
+
+        startRecordingUIUpdate()
+
+        startRecording()
+    }
+
+    private fun startRecordingUIUpdate() {
+        // Not possible to turn audio on/off while recording
+        findViewById<ToggleButton>(R.id.audio_toggle).isEnabled = false
+
+        toggleButton.isChecked = true
+    }
+
+    private fun startRecording() {
+        initAllRecordingResources()
+        if (mMediaProjection == null) {
+            requestPermissionToRecordTheScreen()
+        } else {
+            startRecordingNow()
+        }
+    }
+
+    private fun startRecordingNow() {
+        mVirtualDisplay = createVirtualDisplay()
+        mMediaRecorder.start()
+        Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun requestPermissionToRecordTheScreen() {
+        startActivityForResult(mProjectionManager.createScreenCaptureIntent(), PERMISSION_CODE)
+    }
+
+    public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
+        if (requestCode != PERMISSION_CODE) {
+            Log.e(TAG, "Unknown request code: $requestCode")
+            return
+        }
+
+        if (resultCode != Activity.RESULT_OK) {
+            Toast.makeText(this,
+                    "Screen recording permission denied", Toast.LENGTH_SHORT).show()
+            toggleButton.isChecked = false
+            return
+        }
+
+        mMediaProjection = mProjectionManager.getMediaProjection(resultCode, data)
+        mMediaProjection!!.registerCallback(mMediaProjectionCallback, null)
+        startRecordingNow()
+    }
+
+    private fun createVirtualDisplay(): VirtualDisplay {
+        return mMediaProjection!!.createVirtualDisplay("MainActivity",
+                getRecordingWidth(), getRecordingHeight(), mScreenDensity,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                mMediaRecorder.surface, null /*Handler*/, null)/*Callbacks*/
+    }
+
+    /*********************************************************************************************
+     * Stop Recording
+     ********************************************************************************************/
+
+    private fun stopRecording() {
+        recordingOn = false
+
+        findViewById<ToggleButton>(R.id.audio_toggle).isEnabled = true
+
+        mMediaRecorder.stop()
+        mMediaRecorder.reset()
+
+        Log.v(TAG, "Recording Stopped")
+        stopScreenSharing()
+
+        Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopScreenSharing() {
+        if (mVirtualDisplay != null) {
+            mVirtualDisplay!!.release()
+        }
+        //mMediaRecorder.release();
+    }
+
+    private inner class MediaProjectionCallback : MediaProjection.Callback() {
+        override fun onStop() {
+            if (toggleButton.isChecked) {
+                toggleButton.isChecked = false
+                mMediaRecorder.stop()
+                mMediaRecorder.reset()
+                Log.v(TAG, "Recording Stopped")
+            }
+            mMediaProjection = null
+            stopScreenSharing()
+            Log.i(TAG, "MediaProjection Stopped")
+        }
+    }
+
+
+    /*********************************************************************************************
+     * Initialization
+     ********************************************************************************************/
+
+    private fun initAllRecordingResources() {
+        setScreenDensity()
+        initRecorder()
+        prepareRecorder()
+
+        mProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        mMediaProjectionCallback = MediaProjectionCallback()
+    }
+
+    private fun setScreenDensity() {
+        val metrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(metrics)
+        mScreenDensity = metrics.densityDpi
     }
 
     private fun prepareRecorder() {
@@ -73,7 +205,6 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
             finish()
         }
-
     }
 
     private fun initRecorder() {
@@ -91,61 +222,29 @@ class MainActivity : AppCompatActivity() {
         }
 
         mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-        mMediaRecorder.setVideoEncodingBitRate(2048 * 1000)
+        mMediaRecorder.setVideoEncodingBitRate(ENCODING_BIT_RATE * 1000)
         mMediaRecorder.setVideoFrameRate(30)
 
-        mMediaRecorder.setVideoSize(DISPLAY_WIDTH, DISPLAY_HEIGHT)
+        mMediaRecorder.setVideoSize(getRecordingWidth(), getRecordingHeight())
         mMediaRecorder.setOutputFile(getFilePath())
     }
 
-    private fun getFilePath(): String? {
-        val directory = Environment.getExternalStorageDirectory().toString() + File.separator + "Recordings"
-        if (Environment.MEDIA_MOUNTED != Environment.getExternalStorageState()) {
-            Toast.makeText(this, "Failed to get External Storage", Toast.LENGTH_SHORT).show()
-            return null
-        }
-        val folder = File(directory)
-        var success = true
-        if (!folder.exists()) {
-            success = folder.mkdir()
-        }
-        val filePath: String
-        if (success) {
-            val videoName = "capture_" + getCurSysDate() + ".mp4"
-            filePath = directory + File.separator + videoName
-        } else {
-            Toast.makeText(this, "Failed to create Recordings directory", Toast.LENGTH_SHORT).show()
-            return null
-        }
-        return filePath
+    private fun getRecordingHeight(): Int {
+        //val densityDpi = resources.displayMetrics.densityDpi
+        //val h = resources.displayMetrics.heightPixels * (densityDpi / 160)
+        return resources.displayMetrics.heightPixels
     }
 
-    @SuppressLint("SimpleDateFormat")
-    private fun getCurSysDate(): String {
-        return SimpleDateFormat("yyyy-MM-dd_HH-mm-ss").format(Date())
+    private fun getRecordingWidth(): Int {
+        //val densityDpi = resources.displayMetrics.densityDpi
+        //val w = resources.displayMetrics.widthPixels * (densityDpi / 160)
+        return resources.displayMetrics.widthPixels
     }
 
-    private fun showStartStopRecording() {
-        if (recordingOn) {
-            stopRecording()
-        } else {
-            startRecording()
-        }
-    }
 
-    private fun startRecording() {
-        Log.i(TAG, "Show contacts button pressed. Checking permissions.")
-
-        if (!isPermissionGranted(Manifest.permission.WRITE_EXTERNAL_STORAGE) ||
-                !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) {
-
-            toggleButton.isChecked = false
-            requestRequiredPermissions()
-        } else {
-            Log.i(TAG,"Permissions have already been granted. Starting the recording.")
-            startAuthorizedRecording()
-        }
-    }
+    /*********************************************************************************************
+     * Permission Management
+     ********************************************************************************************/
 
     private fun requestRequiredPermissions() {
         Log.i(TAG, "REQUIRED permission have NOT been granted. Requesting permissions.")
@@ -153,7 +252,7 @@ class MainActivity : AppCompatActivity() {
                 shouldShowPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
             showPermissionRationale()
         } else {
-            ActivityCompat.requestPermissions(this,
+            batchRequestPermissions(
                     PERMISSIONS,
                     REQUEST_PERMISSIONS)
         }
@@ -184,84 +283,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startAuthorizedRecording() {
-        findViewById<ToggleButton>(R.id.audio_toggle).isEnabled = false;
 
-        initAllRecordingResources()
+    /*********************************************************************************************
+     * Storage
+     ********************************************************************************************/
 
-        recordingOn = true
-        toggleButton.isChecked = true
-        Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
-        shareScreen()
-    }
-
-    private fun stopRecording() {
-        recordingOn = false
-
-        findViewById<ToggleButton>(R.id.audio_toggle).isEnabled = true;
-
-        mMediaRecorder.stop()
-        mMediaRecorder.reset()
-        Log.v(TAG, "Recording Stopped")
-        stopScreenSharing()
-
-        Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun shareScreen() {
-        if (mMediaProjection == null) {
-            startActivityForResult(mProjectionManager.createScreenCaptureIntent(), PERMISSION_CODE)
-            return
+    private fun getFilePath(): String? {
+        val directory = Environment.getExternalStorageDirectory().toString() + File.separator + "Recordings"
+        if (Environment.MEDIA_MOUNTED != Environment.getExternalStorageState()) {
+            Toast.makeText(this, "Failed to get External Storage", Toast.LENGTH_SHORT).show()
+            return null
         }
-        mVirtualDisplay = createVirtualDisplay()
-        mMediaRecorder.start()
-    }
-
-    public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
-        if (requestCode != PERMISSION_CODE) {
-            Log.e(TAG, "Unknown request code: $requestCode")
-            return
+        val folder = File(directory)
+        var success = true
+        if (!folder.exists()) {
+            success = folder.mkdir()
         }
-        if (resultCode != Activity.RESULT_OK) {
-            Toast.makeText(this,
-                    "Screen Cast Permission Denied", Toast.LENGTH_SHORT).show()
-            toggleButton.isChecked = false
-            return
+        val filePath: String
+        if (success) {
+            val videoName = "capture_" + getCurSysDate() + ".mp4"
+            filePath = directory + File.separator + videoName
+        } else {
+            Toast.makeText(this, "Failed to create Recordings directory", Toast.LENGTH_SHORT).show()
+            return null
         }
-        mMediaProjection = mProjectionManager.getMediaProjection(resultCode, data)
-        mMediaProjection!!.registerCallback(mMediaProjectionCallback, null)
-        mVirtualDisplay = createVirtualDisplay()
-        mMediaRecorder.start()
+        return filePath
+    }
+
+    @SuppressLint("SimpleDateFormat")
+    private fun getCurSysDate(): String {
+        return SimpleDateFormat("yyyy-MM-dd_HH-mm-ss").format(Date())
     }
 
 
-    private fun stopScreenSharing() {
-        if (mVirtualDisplay != null) {
-            mVirtualDisplay!!.release()
-        }
-        //mMediaRecorder.release();
-    }
-
-    private fun createVirtualDisplay(): VirtualDisplay {
-        return mMediaProjection!!.createVirtualDisplay("MainActivity",
-                DISPLAY_WIDTH, DISPLAY_HEIGHT, mScreenDensity,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                mMediaRecorder.surface, null /*Handler*/, null)/*Callbacks*/
-    }
-
-    private inner class MediaProjectionCallback : MediaProjection.Callback() {
-        override fun onStop() {
-            if (toggleButton.isChecked) {
-                toggleButton.isChecked = false
-                mMediaRecorder.stop()
-                mMediaRecorder.reset()
-                Log.v(TAG, "Recording Stopped")
-            }
-            mMediaProjection = null
-            stopScreenSharing()
-            Log.i(TAG, "MediaProjection Stopped")
-        }
-    }
+    /*********************************************************************************************
+     * Inner Classes
+     ********************************************************************************************/
 
     companion object {
 
@@ -271,9 +328,7 @@ class MainActivity : AppCompatActivity() {
 
         const val PERMISSION_CODE = 1
 
-        const val DISPLAY_WIDTH = 720
-
-        const val DISPLAY_HEIGHT = 1280
+        const val ENCODING_BIT_RATE = 2014
 
         val PERMISSIONS = arrayOf(
                 Manifest.permission.WRITE_EXTERNAL_STORAGE,
